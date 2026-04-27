@@ -4,6 +4,8 @@ use bevy::{
     sprite_render::Material2d,
 };
 
+/// Wall thickness
+const WALL_THICKNESS: f32 = 4.0;
 /// Size of the paddle
 const PADDLE_SIZE: Vec2 = Vec2::new(20.0, 220.0);
 
@@ -25,6 +27,9 @@ fn main() {
         .add_systems(Update, (left_paddle_movement, right_paddle_movement))
         .run();
 }
+
+#[derive(Component)]
+struct Wall(Plane2d);
 
 #[derive(Component)]
 struct Ball;
@@ -58,6 +63,22 @@ fn setup(
         RightPaddle,
     ));
 
+    // upper wall
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::X)),
+        Transform::from_xyz(0., CANVAS_SIZE.y / 2., 0.),
+        Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
+
+    // lower wall
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::X)),
+        Transform::from_xyz(0., -CANVAS_SIZE.y / 2., 0.),
+        Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
+
     commands.spawn((
         Sprite {
             custom_size: Some(Vec2::new(CANVAS_SIZE.x - 4.0, CANVAS_SIZE.y - 4.0)),
@@ -82,7 +103,7 @@ fn setup(
     // Create ball
     commands.spawn((
         Ball,
-        Velocity(Vec2::new(-100., -100.)),
+        Velocity(Vec2::new(-200., -400.)),
         Mesh2d(meshes.add(Circle::new(BALL_SIZE))),
         Transform::from_xyz(0., 0., 0.),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
@@ -115,15 +136,16 @@ fn setup(
 fn ball_movement(
     mut commands: Commands,
     mut ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
+    time: Res<Time>,
 ) {
     // a ray that casts infinitely in the direction
     // the ball is moving
-    let ball_ray = Ray2d::new(
-        // the location of the ball
-        transform.translation.xy(),
-        // the Direction the ball is moving in
-        Dir2::new(velocity.0).unwrap(),
-    );
+    // let ball_ray = Ray2d::new(
+    //     // the location of the ball
+    //     transform.translation.xy(),
+    //     // the Direction the ball is moving in
+    //     Dir2::new(velocity.0).unwrap(),
+    // );
 }
 
 fn move_paddle_helper(paddle: Mut<Transform>, move_by: f32) {
