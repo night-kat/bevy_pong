@@ -1,9 +1,10 @@
 use bevy::{
     color::palettes::{css::WHITE, tailwind::SKY_50},
     prelude::*,
-    sprite_render::Material2d,
 };
 
+/// Width of the death zone
+const DEATH_ZONE_WIDTH: f32 = 20.0;
 /// Wall thickness
 const WALL_THICKNESS: f32 = 4.0;
 /// Size of the paddle
@@ -64,28 +65,61 @@ fn setup(
     ));
 
     // upper wall
-    commands.spawn((
-        Wall(Plane2d::new(Vec2::X)),
-        Transform::from_xyz(0., CANVAS_SIZE.y / 2., 0.),
-        Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
-    ));
+    // commands.spawn((
+    //     Wall(Plane2d::new(Vec2::X)),
+    //     Transform::from_xyz(0., CANVAS_SIZE.y / 2., 0.),
+    //     Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
+    //     MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    // ));
 
     // lower wall
+    // commands.spawn((
+    //     Wall(Plane2d::new(Vec2::X)),
+    //     Transform::from_xyz(0., -CANVAS_SIZE.y / 2., 0.),
+    //     Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
+    //     MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    // ));
+
+    // right wall
+    // commands.spawn((
+    //     Wall(Plane2d::new(Vec2::Y)),
+    //     Transform::from_xyz(CANVAS_SIZE.x / 2., 0., 0.),
+    //     Mesh2d(meshes.add(Rectangle::new(WALL_THICKNESS, CANVAS_SIZE.y))),
+    //     MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    // ));
+
+    // right death zone
     commands.spawn((
-        Wall(Plane2d::new(Vec2::X)),
-        Transform::from_xyz(0., -CANVAS_SIZE.y / 2., 0.),
-        Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        Wall(Plane2d::new(Vec2::Y)),
+        Transform::from_xyz(CANVAS_SIZE.x / 2., 0., 0.),
+        Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, -CANVAS_SIZE.y))),
+        // Kept this for debugging.
+        // Uncomment to make the kill zone visible
+        // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
     ));
 
+    // left death zone
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::Y)),
+        Transform::from_xyz(-(CANVAS_SIZE.x / 2.), 0., 0.),
+        Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, CANVAS_SIZE.y))),
+        // Kept this for debugging.
+        // Uncomment to make the kill zone visible
+        // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
+
+    // Border rectangle
     commands.spawn((
         Sprite {
-            custom_size: Some(Vec2::new(CANVAS_SIZE.x - 4.0, CANVAS_SIZE.y - 4.0)),
-            // color: Color::from(SKY_50),
+            custom_size: Some(Vec2::new(
+                // 4px border
+                CANVAS_SIZE.x + 4.,
+                CANVAS_SIZE.y + 4.,
+            )),
+            color: Color::from(SKY_50),
             ..default()
         },
-        Transform::from_xyz(0., 0., -2.),
+        Transform::from_xyz(0., 0., -3.0),
     ));
 
     // Right paddle
@@ -134,9 +168,9 @@ fn setup(
 }
 
 fn ball_movement(
-    mut commands: Commands,
-    mut ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
-    time: Res<Time>,
+    _commands: Commands,
+    _ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
+    _time: Res<Time>,
 ) {
     // a ray that casts infinitely in the direction
     // the ball is moving
