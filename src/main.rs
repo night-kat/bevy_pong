@@ -1,7 +1,8 @@
-use std::ops::Deref;
-
 use bevy::{
-    color::palettes::{css::WHITE, tailwind::SKY_50},
+    color::palettes::{
+        css::WHITE,
+        tailwind::{SKY_50, SKY_800},
+    },
     prelude::*,
 };
 
@@ -89,46 +90,41 @@ fn setup(
     ));
 
     // right wall
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::X)),
+        Transform::from_xyz(CANVAS_SIZE.x / 2., 0., 0.),
+        Mesh2d(meshes.add(Rectangle::new(WALL_THICKNESS, CANVAS_SIZE.y))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
+
+    // left wall
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::X)),
+        Transform::from_xyz(-CANVAS_SIZE.x / 2., 0., 0.),
+        // This magic number makes the walls perfectly line up, no gaps, and no overshoot
+        Mesh2d(meshes.add(Rectangle::new(WALL_THICKNESS, CANVAS_SIZE.y))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
+    //
+    // // right death zone
     // commands.spawn((
     //     Wall(Plane2d::new(Vec2::Y)),
     //     Transform::from_xyz(CANVAS_SIZE.x / 2., 0., 0.),
-    //     Mesh2d(meshes.add(Rectangle::new(WALL_THICKNESS, CANVAS_SIZE.y))),
-    //     MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    //     Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, -CANVAS_SIZE.y))),
+    //     // Kept this for debugging.
+    //     // Uncomment to make the kill zone visible
+    //     // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
     // ));
-
-    // right death zone
-    commands.spawn((
-        Wall(Plane2d::new(Vec2::Y)),
-        Transform::from_xyz(CANVAS_SIZE.x / 2., 0., 0.),
-        Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, -CANVAS_SIZE.y))),
-        // Kept this for debugging.
-        // Uncomment to make the kill zone visible
-        // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
-    ));
-
-    // left death zone
-    commands.spawn((
-        Wall(Plane2d::new(Vec2::Y)),
-        Transform::from_xyz(-(CANVAS_SIZE.x / 2.), 0., 0.),
-        Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, CANVAS_SIZE.y))),
-        // Kept this for debugging.
-        // Uncomment to make the kill zone visible
-        // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
-    ));
-
-    // Border rectangle
-    commands.spawn((
-        Sprite {
-            custom_size: Some(Vec2::new(
-                // 4px border
-                CANVAS_SIZE.x + 4.,
-                CANVAS_SIZE.y + 4.,
-            )),
-            color: Color::from(SKY_50),
-            ..default()
-        },
-        Transform::from_xyz(0., 0., -3.0),
-    ));
+    //
+    // // left death zone
+    // commands.spawn((
+    //     Wall(Plane2d::new(Vec2::Y)),
+    //     Transform::from_xyz(-(CANVAS_SIZE.x / 2.), 0., 0.),
+    //     Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, CANVAS_SIZE.y))),
+    //     // Kept this for debugging.
+    //     // Uncomment to make the kill zone visible
+    //     // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    // ));
 
     // Right paddle
     commands.spawn((
@@ -171,28 +167,60 @@ fn setup(
             color: Color::BLACK,
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, -1.0),
+        Transform::from_xyz(0.0, 0.0, -2.0),
+    ));
+
+    // Border rectangle
+    commands.spawn((
+        Sprite {
+            custom_size: Some(Vec2::new(
+                // 4px border
+                CANVAS_SIZE.x + 4.,
+                CANVAS_SIZE.y + 4.,
+            )),
+            color: Color::from(SKY_50),
+            ..default()
+        },
+        Transform::from_xyz(0., 0., -3.0),
     ));
 }
 
 fn ball_movement(
-    commands: Commands,
+    // it is not possible to have two queries on the same component
+    // when one requests mutable access to it in the same system.
+    // Without<Ball> means that we will not be using a transform
+    // component of ball, since that would mean having a mutable reference
+    // and a reference to transform at the same time, which is not allowed
+    // by the borrow checker
+    walls: Query<(&Wall, &mut Transform), Without<Ball>>,
     ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
     time: Res<Time>,
 ) {
-    let (mut transform, velocity) = ball.into_inner();
-    let ball_movement_this_frame = velocity.0 * time.delta_secs();
+    let (mut transform, mut velocity) = ball.into_inner();
 
+    let ball_movement_this_frame = velocity.0 * time.delta_secs();
+    let ball_move_distance = ball_movement_this_frame.length();
     transform.translation += (ball_movement_this_frame).extend(0.0);
 
     // a ray that casts infinitely in the direction
     // the ball is moving
-    // let ball_ray = Ray2d::new(
-    //     // the location of the ball
-    //     transform.translation.xy(),
-    //     // the Direction the ball is moving in
-    //     Dir2::new(velocity.0).unwrap(),
-    // );
+    let ball_ray = Ray2d::new(
+        // the location of the ball
+        transform.translation.xy(),
+        // the Direction the ball is moving in
+        Dir2::new(velocity.0).unwrap(),
+    );
+
+    for (wall, origin) in walls {
+        if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
+            && hit_distance <= ball_move_distance
+        {
+            dbg!(hit_distance);
+
+            velocity.0 = velocity.0.reflect(wall.0.normal.as_vec2());
+            return;
+        }
+    }
 }
 
 fn move_paddle_helper(paddle: Mut<Transform>, move_by: f32) {
