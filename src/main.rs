@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use bevy::{
     color::palettes::{css::WHITE, tailwind::SKY_50},
     prelude::*,
@@ -5,8 +7,10 @@ use bevy::{
 
 /// Width of the death zone
 const DEATH_ZONE_WIDTH: f32 = 20.0;
+
 /// Wall thickness
 const WALL_THICKNESS: f32 = 4.0;
+
 /// Size of the paddle
 const PADDLE_SIZE: Vec2 = Vec2::new(20.0, 220.0);
 
@@ -19,13 +23,17 @@ const PADDLE_SPEED: f32 = 400.0;
 /// Distance of the paddle from the wall
 const PADDLE_PADDING: f32 = 50.0;
 
+const BALL_VELOCITY: Vec2 = Vec2::new(200., 400.);
 const BALL_SIZE: f32 = 10.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Update, (left_paddle_movement, right_paddle_movement))
+        .add_systems(
+            Update,
+            (ball_movement, left_paddle_movement, right_paddle_movement),
+        )
         .run();
 }
 
@@ -65,20 +73,20 @@ fn setup(
     ));
 
     // upper wall
-    // commands.spawn((
-    //     Wall(Plane2d::new(Vec2::X)),
-    //     Transform::from_xyz(0., CANVAS_SIZE.y / 2., 0.),
-    //     Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
-    //     MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
-    // ));
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::X)),
+        Transform::from_xyz(0., CANVAS_SIZE.y / 2., 0.),
+        Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
 
     // lower wall
-    // commands.spawn((
-    //     Wall(Plane2d::new(Vec2::X)),
-    //     Transform::from_xyz(0., -CANVAS_SIZE.y / 2., 0.),
-    //     Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
-    //     MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
-    // ));
+    commands.spawn((
+        Wall(Plane2d::new(Vec2::X)),
+        Transform::from_xyz(0., -CANVAS_SIZE.y / 2., 0.),
+        Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+    ));
 
     // right wall
     // commands.spawn((
@@ -137,7 +145,7 @@ fn setup(
     // Create ball
     commands.spawn((
         Ball,
-        Velocity(Vec2::new(-200., -400.)),
+        Velocity(BALL_VELOCITY),
         Mesh2d(meshes.add(Circle::new(BALL_SIZE))),
         Transform::from_xyz(0., 0., 0.),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
@@ -168,10 +176,15 @@ fn setup(
 }
 
 fn ball_movement(
-    _commands: Commands,
-    _ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
-    _time: Res<Time>,
+    commands: Commands,
+    ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
+    time: Res<Time>,
 ) {
+    let (mut transform, velocity) = ball.into_inner();
+    let ball_movement_this_frame = velocity.0 * time.delta_secs();
+
+    transform.translation += (ball_movement_this_frame).extend(0.0);
+
     // a ray that casts infinitely in the direction
     // the ball is moving
     // let ball_ray = Ray2d::new(
