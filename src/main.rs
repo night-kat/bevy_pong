@@ -1,8 +1,7 @@
+use std::{thread::sleep, time::Duration};
+
 use bevy::{
-    color::palettes::{
-        css::WHITE,
-        tailwind::{SKY_50, SKY_800},
-    },
+    color::palettes::{css::WHITE, tailwind::SKY_50},
     prelude::*,
 };
 
@@ -30,6 +29,12 @@ const BALL_SIZE: f32 = 10.0;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(bevy_inspector_egui::bevy_egui::EguiPlugin::default())
+        .add_plugins((
+            bevy_inspector_egui::quick::WorldInspectorPlugin::default().run_if(
+                bevy::input::common_conditions::input_toggle_active(false, KeyCode::Escape),
+            ),
+        ))
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -37,6 +42,9 @@ fn main() {
         )
         .run();
 }
+
+#[derive(Default, Reflect, GizmoConfigGroup)]
+struct MyGizmos {}
 
 #[derive(Component)]
 struct Wall(Plane2d);
@@ -71,22 +79,25 @@ fn setup(
         Transform::from_xyz(CANVAS_SIZE.x / 2.0 - PADDLE_PADDING, 0.0, 0.0),
         Paddle,
         RightPaddle,
+        Name::new("Left paddle"),
     ));
 
     // upper wall
     commands.spawn((
-        Wall(Plane2d::new(Vec2::X)),
+        Wall(Plane2d::new(Vec2::Y)),
         Transform::from_xyz(0., CANVAS_SIZE.y / 2., 0.),
         Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        Name::new("Top wall"),
     ));
 
     // lower wall
     commands.spawn((
-        Wall(Plane2d::new(Vec2::X)),
+        Wall(Plane2d::new(Vec2::Y)),
         Transform::from_xyz(0., -CANVAS_SIZE.y / 2., 0.),
         Mesh2d(meshes.add(Rectangle::new(CANVAS_SIZE.x, WALL_THICKNESS))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        Name::new("Bottom wall"),
     ));
 
     // right wall
@@ -95,6 +106,7 @@ fn setup(
         Transform::from_xyz(CANVAS_SIZE.x / 2., 0., 0.),
         Mesh2d(meshes.add(Rectangle::new(WALL_THICKNESS, CANVAS_SIZE.y))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        Name::new("Right wall"),
     ));
 
     // left wall
@@ -104,6 +116,7 @@ fn setup(
         // This magic number makes the walls perfectly line up, no gaps, and no overshoot
         Mesh2d(meshes.add(Rectangle::new(WALL_THICKNESS, CANVAS_SIZE.y))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        Name::new("Left wall"),
     ));
     //
     // // right death zone
@@ -136,6 +149,7 @@ fn setup(
         Transform::from_xyz(-CANVAS_SIZE.x / 2.0 + PADDLE_PADDING, 0.0, 0.0),
         Paddle,
         LeftPaddle,
+        Name::new("Right paddle"),
     ));
 
     // Create ball
@@ -145,6 +159,7 @@ fn setup(
         Mesh2d(meshes.add(Circle::new(BALL_SIZE))),
         Transform::from_xyz(0., 0., 0.),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        Name::new("ball"),
     ));
 
     // Spawn a camera
@@ -157,6 +172,7 @@ fn setup(
             },
             ..OrthographicProjection::default_2d()
         }),
+        Name::new("Camera2d"),
     ));
 
     // Spawn a black background to signify play area in case
@@ -168,20 +184,7 @@ fn setup(
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, -2.0),
-    ));
-
-    // Border rectangle
-    commands.spawn((
-        Sprite {
-            custom_size: Some(Vec2::new(
-                // 4px border
-                CANVAS_SIZE.x + 4.,
-                CANVAS_SIZE.y + 4.,
-            )),
-            color: Color::from(SKY_50),
-            ..default()
-        },
-        Transform::from_xyz(0., 0., -3.0),
+        Name::new("Black background"),
     ));
 }
 
@@ -192,35 +195,41 @@ fn ball_movement(
     // component of ball, since that would mean having a mutable reference
     // and a reference to transform at the same time, which is not allowed
     // by the borrow checker
-    walls: Query<(&Wall, &mut Transform), Without<Ball>>,
+    walls: Query<(&Wall, &Transform), Without<Ball>>,
     ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
     time: Res<Time>,
 ) {
     let (mut transform, mut velocity) = ball.into_inner();
 
-    let ball_movement_this_frame = velocity.0 * time.delta_secs();
-    let ball_move_distance = ball_movement_this_frame.length();
-    transform.translation += (ball_movement_this_frame).extend(0.0);
-
-    // a ray that casts infinitely in the direction
-    // the ball is moving
-    let ball_ray = Ray2d::new(
-        // the location of the ball
-        transform.translation.xy(),
-        // the Direction the ball is moving in
-        Dir2::new(velocity.0).unwrap(),
-    );
-
     for (wall, origin) in walls {
-        if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
-            && hit_distance <= ball_move_distance
-        {
-            dbg!(hit_distance);
+        let Ok(velocity_dir) = Dir2::new(velocity.0) else {
+            // ball is stationary lmao
+            break;
+        };
 
+        // a ray that casts infinitely in the direction the ball is moving
+        let ball_ray = Ray2d::new(
+            // the location of the ball
+            transform.translation.xy(),
+            // the Direction the ball is moving in
+            velocity_dir,
+        );
+
+        // position change that would be applied this frame based on the current velocity
+        let position_delta = velocity.0 * time.delta_secs();
+
+        // if the the current velocity points into this wall and the position delta were to move it across
+        // the wall...
+        if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
+            && hit_distance.powi(2) <= position_delta.length_squared()
+        {
+            // then do not
             velocity.0 = velocity.0.reflect(wall.0.normal.as_vec2());
-            return;
         }
     }
+
+    // change the position
+    transform.translation += (velocity.0 * time.delta_secs()).extend(0.0);
 }
 
 fn move_paddle_helper(paddle: Mut<Transform>, move_by: f32) {
