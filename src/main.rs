@@ -1,9 +1,17 @@
-use std::{thread::sleep, time::Duration};
+use std::{
+    f32::consts::{FRAC_PI_4, PI},
+    ops::Div,
+};
 
 use bevy::{
     color::palettes::{css::WHITE, tailwind::SKY_50},
+    math::{
+        FloatOrd,
+        bounding::{Aabb2d, RayCast2d},
+    },
     prelude::*,
 };
+use bevy_inspector_egui::egui::lerp;
 
 /// Width of the death zone
 const DEATH_ZONE_WIDTH: f32 = 20.0;
@@ -13,6 +21,10 @@ const WALL_THICKNESS: f32 = 4.0;
 
 /// Size of the paddle
 const PADDLE_SIZE: Vec2 = Vec2::new(20.0, 220.0);
+
+/// Half the size of the paddle
+/// useful for creating Aabb2d collider
+const HALFSIZE: Vec2 = Vec2::new(PADDLE_SIZE.x / 2., PADDLE_SIZE.y / 2.);
 
 /// Size of the canvas
 const CANVAS_SIZE: Vec2 = Vec2::new(1280., 720.0);
@@ -43,8 +55,8 @@ fn main() {
         .run();
 }
 
-#[derive(Default, Reflect, GizmoConfigGroup)]
-struct MyGizmos {}
+#[derive(Debug, Component)]
+struct HalfSize(Vec2);
 
 #[derive(Component)]
 struct Wall(Plane2d);
@@ -69,7 +81,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // Left paddle
+    // Right paddle
     commands.spawn((
         Sprite {
             custom_size: Some(PADDLE_SIZE),
@@ -79,7 +91,22 @@ fn setup(
         Transform::from_xyz(CANVAS_SIZE.x / 2.0 - PADDLE_PADDING, 0.0, 0.0),
         Paddle,
         RightPaddle,
+        Name::new("Right paddle"),
+        HalfSize(HALFSIZE),
+    ));
+
+    // Left paddle
+    commands.spawn((
+        Sprite {
+            custom_size: Some(PADDLE_SIZE),
+            color: SKY_50.into(),
+            ..default()
+        },
+        Transform::from_xyz(-CANVAS_SIZE.x / 2.0 + PADDLE_PADDING, 0.0, 0.0),
+        Paddle,
+        LeftPaddle,
         Name::new("Left paddle"),
+        HalfSize(PADDLE_SIZE / 2.),
     ));
 
     // upper wall
@@ -136,21 +163,9 @@ fn setup(
     //     Mesh2d(meshes.add(Rectangle::new(DEATH_ZONE_WIDTH, CANVAS_SIZE.y))),
     //     // Kept this for debugging.
     //     // Uncomment to make the kill zone visible
+    //     // WARNING: Kill zone is a wall2d, should be ab aabb2d i think, fix
     //     // MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
     // ));
-
-    // Right paddle
-    commands.spawn((
-        Sprite {
-            custom_size: Some(PADDLE_SIZE),
-            color: SKY_50.into(),
-            ..default()
-        },
-        Transform::from_xyz(-CANVAS_SIZE.x / 2.0 + PADDLE_PADDING, 0.0, 0.0),
-        Paddle,
-        LeftPaddle,
-        Name::new("Right paddle"),
-    ));
 
     // Create ball
     commands.spawn((
@@ -198,6 +213,8 @@ fn ball_movement(
     walls: Query<(&Wall, &Transform), Without<Ball>>,
     ball: Single<(&mut Transform, &mut Velocity), With<Ball>>,
     time: Res<Time>,
+    paddles: Query<(), With<Paddle>>,
+    aabb_colliders: Query<(Entity, &Transform, &HalfSize), Without<Ball>>,
 ) {
     let (mut transform, mut velocity) = ball.into_inner();
 
@@ -218,14 +235,38 @@ fn ball_movement(
         // position change that would be applied this frame based on the current velocity
         let position_delta = velocity.0 * time.delta_secs();
 
+        let ball_cast = RayCast2d::from_ray(ball_ray, position_delta.length());
+        if let Some((entity, origin, _aabb_collider, _)) = aabb_colliders
+            .iter()
+            .filter_map(|(entity, origin, half_size)| {
+                let aabb_collider = Aabb2d::new(origin.translation.xy(), half_size.0);
+
+                // no intersection means no hit distance
+                let hit_distance = ball_cast.aabb_intersection_at(&aabb_collider)?;
+                Some((entity, origin, aabb_collider, hit_distance))
+            })
+            .min_by_key(|(_, _, _, distance)| FloatOrd(*distance))
+        {
+            // In here, we know that there is a hit
+            println!("Hit");
+            if paddles.get(entity).is_ok() {
+                let direction_vector = transform.translation.xy() - origin.translation.xy();
+
+                let angle = direction_vector.to_angle();
+                let linear_angle = angle.clamp(0., PI) / PI;
+                let softened_angle = FRAC_PI_4.lerp(PI - FRAC_PI_4, linear_angle);
+                velocity.0 = Vec2::from_angle(softened_angle) * velocity.0.length()
+            }
+        }
+
         // if the the current velocity points into this wall and the position delta were to move it across
         // the wall...
-        if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
-            && hit_distance.powi(2) <= position_delta.length_squared()
-        {
-            // then do not
-            velocity.0 = velocity.0.reflect(wall.0.normal.as_vec2());
-        }
+        // if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
+        //     && hit_distance.powi(2) <= position_delta.length_squared()
+        // {
+        //     // then do not
+        //     velocity.0 = velocity.0.reflect(wall.0.normal.as_vec2());
+        // }
     }
 
     // change the position
