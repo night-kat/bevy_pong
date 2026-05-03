@@ -261,12 +261,12 @@ fn ball_movement(
 
         // if the the current velocity points into this wall and the position delta were to move it across
         // the wall...
-        // if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
-        //     && hit_distance.powi(2) <= position_delta.length_squared()
-        // {
-        //     // then do not
-        //     velocity.0 = velocity.0.reflect(wall.0.normal.as_vec2());
-        // }
+        if let Some(hit_distance) = ball_ray.intersect_plane(origin.translation.xy(), wall.0)
+            && hit_distance.powi(2) <= position_delta.length_squared()
+        {
+            // then do not
+            velocity.0 = velocity.0.reflect(wall.0.normal.as_vec2());
+        }
     }
 
     // change the position
