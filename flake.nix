@@ -48,12 +48,22 @@
         libxi
         libxrandr
         libxkbcommon
+
+        # needed for berrycode
+        openssl
+        wayland
+        wayland-protocols
       ];
 
       nativeBuildInputs = [pkgs.pkg-config];
 
       env.RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+      env = {
+        PATH = "$HOME/.cargo/bin";
+      };
+
       LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+        pkgs.wayland
         pkgs.vulkan-loader
         pkgs.libx11
         pkgs.libxi
@@ -61,6 +71,7 @@
         pkgs.libxkbcommon
       ];
       shellHook = ''
+        export PATH="/home/nightcat/.cargo/bin:$PATH"
         export CARGO_CLIPPY_FLAGS='-- -W clippy::pedantic -W clippy::nursery -W clippy::unwrap_used'
       '';
     };
