@@ -1,10 +1,12 @@
 use std::{
+    cmp::Ordering,
     f32::consts::{FRAC_PI_4, PI},
-    ops::Div,
+    ops::{Div, Neg},
 };
 
 use bevy::{
     color::palettes::{css::WHITE, tailwind::SKY_50},
+    ecs::error::panic,
     math::{
         FloatOrd,
         bounding::{Aabb2d, RayCast2d},
@@ -248,14 +250,24 @@ fn ball_movement(
             .min_by_key(|(_, _, _, distance)| FloatOrd(*distance))
         {
             // In here, we know that there is a hit
-            println!("Hit");
             if paddles.get(entity).is_ok() {
                 let direction_vector = transform.translation.xy() - origin.translation.xy();
 
-                let angle = direction_vector.to_angle();
-                let linear_angle = angle.clamp(0., PI) / PI;
-                let softened_angle = FRAC_PI_4.lerp(PI - FRAC_PI_4, linear_angle);
-                velocity.0 = Vec2::from_angle(softened_angle) * velocity.0.length()
+                match direction_vector.x.partial_cmp(&(0.0_f32)) {
+                    Some(Ordering::Greater) => {
+                        let angle = direction_vector.to_angle();
+                        let linear_angle = angle.clamp(0.0, PI);
+                        let softened_angle = linear_angle.lerp(FRAC_PI_4, linear_angle);
+                        velocity.0 = Vec2::from_angle(softened_angle) * velocity.0.length();
+                    }
+                    Some(Ordering::Less) => {
+                        let angle = direction_vector.to_angle();
+                        let linear_angle = angle.clamp(PI, 2. * PI);
+                        let softened_angle = linear_angle.lerp(FRAC_PI_4, linear_angle);
+                        velocity.0 = Vec2::from_angle(softened_angle) * velocity.0.length();
+                    }
+                    _ => (), // This should never happen
+                };
             }
         }
 
